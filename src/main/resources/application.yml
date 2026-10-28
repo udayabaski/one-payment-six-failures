@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: one-payment-six-failures
+  r2dbc:
+    url: r2dbc:h2:mem:///payments;DB_CLOSE_DELAY=-1
+  sql:
+    init:
+      mode: always
+
+payments:
+  authz:
+    # Failure #1: what a caller sees when they try to pay for someone else's order.
+    # FORBIDDEN -> 403, NOT_FOUND -> 404 (does not reveal that the order exists).
+    foreign-order-response: FORBIDDEN
+  idempotency:
+    # How long a worker owns a PROCESSING payment before another request may recover it.
+    lease: 5s
+    retention: 24h
+  provider:
+    # Blank means "this application": the fake payment provider is served under /provider.
+    base-url: ""
+    timeout: 10s
+    latency: 150ms
+  retry-after:
+    provider-unavailable: 30s
+    in-progress: 1s
+  rate-limit:
+    login:
+      limit: 5
+      window: 60s
+  proxy:
+    # Failure #4: only these peers may tell us who the client is via Forwarded / X-Forwarded-For.
+    # Your laptop (127.0.0.1) is deliberately NOT trusted, so it is treated as a direct client.
+    trusted-proxies:
+      - 10.0.0.0/8
+  refunds:
+    # Failure #5: artificial pause between "read version" and "write" in the naive endpoint,
+    # so the race is easy to reproduce.
+    naive-race-window: 100ms
+  tracing:
+    notification-latency: 300ms
+    baggage-allowlist:
+      - client.app
+      - tenant.tier
+
+logging:
+  level:
+    # Harmless on macOS without the native DNS resolver; keeps the demo output clean.
+    io.netty.resolver.dns.DnsServerAddressStreamProviders: off
